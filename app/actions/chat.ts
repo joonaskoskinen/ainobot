@@ -1,3 +1,69 @@
+"use server"
+
+import { generateText } from "ai"
+import { createGroq } from "@ai-sdk/groq"
+
+export interface ChatMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+// Initialize Groq with the API key from environment variables
+// Try different possible environment variable names
+const groq = createGroq({
+  apiKey: process.env.API_KEY || process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY,
+})
+
+export async function generateAIResponse(messages: ChatMessage[], scenario = "ecommerce"): Promise<string> {
+  try {
+    // Debug: Log available environment variables (remove in production)
+    console.log("Available env vars:", {
+      API_KEY: process.env.API_KEY ? "✓ Found" : "✗ Missing",
+      GROQ_API_KEY: process.env.GROQ_API_KEY ? "✓ Found" : "✗ Missing",
+      NEXT_PUBLIC_GROQ_API_KEY: process.env.NEXT_PUBLIC_GROQ_API_KEY ? "✓ Found" : "✗ Missing",
+    })
+
+    const context = contexts[scenario as keyof typeof contexts] || contexts.ecommerce
+
+    const { text } = await generateText({
+      model: groq("llama-3.3-70b-versatile"),
+      messages: [
+        {
+          role: "system",
+          content: context,
+        },
+        ...messages,
+      ],
+      temperature: 0.7,
+      maxTokens: 500,
+    })
+
+    return text
+  } catch (error) {
+    console.error("AI Response Error:", error)
+
+    // Fallback vastaukset eri skenaarioille
+    const fallbackResponses = {
+      ecommerce:
+        "Kiitos yhteydenotostasi! Valitettavasti järjestelmässämme on tällä hetkellä teknisiä ongelmia. Voit ottaa yhteyttä asiakaspalveluumme puhelimitse **010-123 4567** tai sähköpostitse **asiakaspalvelu@techmart.fi**. Olemme tavoitettavissa ma-pe 8-18.",
+
+      restaurant:
+        "Kiitos yhteydenotostasi Ravintola Kulmaan! Järjestelmässämme on tällä hetkellä teknisiä ongelmia. Voit varata pöydän suoraan puhelimitse **09-123 4567** tai käydä paikan päällä osoitteessa **Keskuskatu 15, Helsinki**. Olemme avoinna ma-to 11-22, pe-la 11-23, su 12-21.",
+
+      realestate:
+        "Kiitos yhteydenotostasi Kiinteistö Koti Oy:hyn! Järjestelmässämme on teknisiä ongelmia. Ota yhteyttä kiinteistönvälittäjiimme suoraan puhelimitse **09-234 5678** tai sähköpostitse **myynti@kiinteistokoti.fi**. Asiakaspalvelu ma-pe 9-17, la 10-14.",
+
+      healthcare:
+        "Kiitos yhteydenotostasi TerveysKeskus Plus:aan! Järjestelmässä on teknisiä ongelmia. **Kiireellisissä tapauksissa soita 112.** Ajanvaraukseen voit soittaa **010-123 4567** (ma-pe 7-20, la-su 9-18) tai käydä päivystyksessä.",
+
+      banking:
+        "Kiitos yhteydenotostasi Koti Pankkiin! Järjestelmässä on teknisiä ongelmia. Ota yhteyttä asiakaspalveluumme **24/7 numerossa 0200-12345** tai käy lähimmässä konttorissa (Helsinki, Espoo, Vantaa). **Muista: emme koskaan kysy tunnuksiasi puhelimitse tai sähköpostitse.**",
+    }
+
+    return fallbackResponses[scenario as keyof typeof fallbackResponses] || fallbackResponses.ecommerce
+  }
+}
+
 const contexts = {
   ecommerce: `Olet TechMart Oy:n asiakaspalveluassistentti. Auta asiakkaita tuotetietojen, tilausten, palautusten ja teknisen tuen kanssa. Ole ystävällinen ja ammattimainen. Vastaa AINA suomeksi.
 
