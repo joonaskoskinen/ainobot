@@ -57,11 +57,10 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
     lines.forEach((line, index) => {
       const trimmedLine = line.trim()
 
-      // Tyhjä rivi
+      // Skip empty lines
       if (!trimmedLine) {
         flushList()
         flushBlockquote()
-        elements.push(<div key={`space-${index}`} className="h-2" />)
         return
       }
 
@@ -80,7 +79,7 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
         flushList()
         flushBlockquote()
         elements.push(
-          <h2 key={`h2-${index}`} className="text-xl font-bold text-white mt-4 mb-2 flex items-center">
+          <h2 key={`h2-${index}`} className="text-xl font-bold text-white mt-4 mb-2">
             {parseInlineMarkdown(trimmedLine.substring(3))}
           </h2>,
         )
@@ -98,8 +97,8 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
         return
       }
 
-      // Lists
-      if (trimmedLine.startsWith("• ") || trimmedLine.startsWith("- ")) {
+      // Lists - handle both • and -
+      if (trimmedLine.match(/^[•-]\s+/)) {
         flushBlockquote()
         currentList.push(trimmedLine.substring(2))
         return
@@ -125,60 +124,56 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
   const parseInlineMarkdown = (text: string): ReactNode => {
     if (!text) return ""
 
-    const parts: ReactNode[] = []
-    let remaining = text
-    let keyCounter = 0
+    // Handle bold **text** first
+    let result = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
 
-    const processMatch = (regex: RegExp, component: (content: string, key: string) => ReactNode) => {
-      let match
-      while ((match = regex.exec(remaining)) !== null) {
-        const content = match[1]
-        const key = `__${match[0].replace(/[^A-Z0-9]/g, "_")}_${keyCounter}__`
-        parts.push(component(content, key))
-        remaining = remaining.replace(match[0], key)
-        keyCounter++
-      }
-    }
+    // Handle italic *text* (but not when part of **)
+    result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>")
 
-    // Process bold **text**
-    processMatch(/\*\*(.*?)\*\*/g, (content, key) => (
-      <strong key={key} className="font-bold text-white">
-        {content}
-      </strong>
-    ))
+    // Handle code `text`
+    result = result.replace(/`([^`]+)`/g, "<code>$1</code>")
 
-    // Process italic *text*
-    processMatch(/(?<!\*)\*([^*]+)\*(?!\*)/g, (content, key) => (
-      <em key={key} className="italic text-blue-200">
-        {content}
-      </em>
-    ))
+    // Split by HTML tags and process
+    const parts = result.split(/(<\/?(?:strong|em|code)>)/g)
 
-    // Process code `text`
-    processMatch(/`([^`]+)`/g, (content, key) => (
-      <code key={key} className="bg-gray-800 text-green-300 px-2 py-1 rounded text-sm font-mono">
-        {content}
-      </code>
-    ))
+    return parts
+      .map((part, index) => {
+        if (part === "<strong>") return null
+        if (part === "</strong>") return null
+        if (part === "<em>") return null
+        if (part === "</em>") return null
+        if (part === "<code>") return null
+        if (part === "</code>") return null
 
-    // Split and reconstruct
-    const segments = remaining.split(/(__[^_]+(?:_[^_]+)+__)/g)
-    const result: ReactNode[] = []
+        // Check if this part should be wrapped
+        const prevTag = parts[index - 1]
+        const nextTag = parts[index + 1]
 
-    segments.forEach((segment, index) => {
-      if (segment.match(/^(__[^_]+(?:_[^_]+)+__)$/)) {
-        const matchingPart = parts.find((part: any) => part.key === segment)
-        if (matchingPart) {
-          result.push(matchingPart)
-        } else {
-          result.push(segment) // If not found, keep the original segment
+        if (prevTag === "<strong>" && nextTag === "</strong>") {
+          return (
+            <strong key={index} className="font-bold text-white">
+              {part}
+            </strong>
+          )
         }
-      } else {
-        result.push(segment)
-      }
-    })
+        if (prevTag === "<em>" && nextTag === "</em>") {
+          return (
+            <em key={index} className="italic text-blue-200">
+              {part}
+            </em>
+          )
+        }
+        if (prevTag === "<code>" && nextTag === "</code>") {
+          return (
+            <code key={index} className="bg-gray-800 text-green-300 px-2 py-1 rounded text-sm font-mono">
+              {part}
+            </code>
+          )
+        }
 
-    return result.length > 0 ? result : text
+        return part
+      })
+      .filter(Boolean)
   }
 
   return <div className={`markdown-content ${className}`}>{parseMarkdown(content)}</div>
