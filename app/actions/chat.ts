@@ -9,19 +9,22 @@ export interface ChatMessage {
 }
 
 // Initialize Groq with the API key from environment variables
-// Try different possible environment variable names
 const groq = createGroq({
-  apiKey: process.env.API_KEY || process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY,
+  apiKey: process.env.API_KEY || process.env.GROQ_API_KEY,
 })
 
 export async function generateAIResponse(messages: ChatMessage[], scenario = "ecommerce"): Promise<string> {
   try {
-    // Debug: Log available environment variables (remove in production)
-    console.log("Available env vars:", {
-      API_KEY: process.env.API_KEY ? "✓ Found" : "✗ Missing",
-      GROQ_API_KEY: process.env.GROQ_API_KEY ? "✓ Found" : "✗ Missing",
-      NEXT_PUBLIC_GROQ_API_KEY: process.env.NEXT_PUBLIC_GROQ_API_KEY ? "✓ Found" : "✗ Missing",
-    })
+    // Tarkista että API-avain on olemassa
+    const apiKey = process.env.API_KEY || process.env.GROQ_API_KEY
+    if (!apiKey) {
+      console.error("❌ API key missing!")
+      throw new Error("API key not found")
+    }
+
+    console.log("✅ API key found, making request...")
+    console.log("📝 Scenario:", scenario)
+    console.log("💬 Messages count:", messages.length)
 
     const context = contexts[scenario as keyof typeof contexts] || contexts.ecommerce
 
@@ -38,122 +41,116 @@ export async function generateAIResponse(messages: ChatMessage[], scenario = "ec
       maxTokens: 500,
     })
 
+    console.log("✅ AI Response received:", text.substring(0, 100) + "...")
     return text
   } catch (error) {
-    console.error("AI Response Error:", error)
+    console.error("❌ AI Response Error:", error)
 
-    // Fallback vastaukset eri skenaarioille
-    const fallbackResponses = {
-      ecommerce:
-        "Kiitos yhteydenotostasi! Valitettavasti järjestelmässämme on tällä hetkellä teknisiä ongelmia. Voit ottaa yhteyttä asiakaspalveluumme puhelimitse **010-123 4567** tai sähköpostitse **asiakaspalvelu@techmart.fi**. Olemme tavoitettavissa ma-pe 8-18.",
-
-      restaurant:
-        "Kiitos yhteydenotostasi Ravintola Kulmaan! Järjestelmässämme on tällä hetkellä teknisiä ongelmia. Voit varata pöydän suoraan puhelimitse **09-123 4567** tai käydä paikan päällä osoitteessa **Keskuskatu 15, Helsinki**. Olemme avoinna ma-to 11-22, pe-la 11-23, su 12-21.",
-
-      realestate:
-        "Kiitos yhteydenotostasi Kiinteistö Koti Oy:hyn! Järjestelmässämme on teknisiä ongelmia. Ota yhteyttä kiinteistönvälittäjiimme suoraan puhelimitse **09-234 5678** tai sähköpostitse **myynti@kiinteistokoti.fi**. Asiakaspalvelu ma-pe 9-17, la 10-14.",
-
-      healthcare:
-        "Kiitos yhteydenotostasi TerveysKeskus Plus:aan! Järjestelmässä on teknisiä ongelmia. **Kiireellisissä tapauksissa soita 112.** Ajanvaraukseen voit soittaa **010-123 4567** (ma-pe 7-20, la-su 9-18) tai käydä päivystyksessä.",
-
-      banking:
-        "Kiitos yhteydenotostasi Koti Pankkiin! Järjestelmässä on teknisiä ongelmia. Ota yhteyttä asiakaspalveluumme **24/7 numerossa 0200-12345** tai käy lähimmässä konttorissa (Helsinki, Espoo, Vantaa). **Muista: emme koskaan kysy tunnuksiasi puhelimitse tai sähköpostitse.**",
+    // Tarkista onko kyse API-avaimesta
+    if (error instanceof Error && error.message.includes("API key")) {
+      return "🔑 **API-avain puuttuu!** Lisää GROQ_API_KEY ympäristömuuttujiin."
     }
 
-    return fallbackResponses[scenario as keyof typeof fallbackResponses] || fallbackResponses.ecommerce
+    // Tarkista onko kyse mallista
+    if (error instanceof Error && error.message.includes("model")) {
+      return "🤖 **Malli-ongelma!** Kokeillaan toista mallia..."
+    }
+
+    // Yleinen virheviesti skenaariokohtaisesti
+    const errorResponses = {
+      ecommerce:
+        "🛒 **TechMart Oy** - Järjestelmässä on väliaikainen häiriö. Kokeile hetken kuluttua uudelleen tai ota yhteyttä asiakaspalveluun **010-123 4567**.",
+
+      restaurant:
+        "🍽️ **Ravintola Kulma** - Varausjärjestelmässä on häiriö. Voit soittaa suoraan **09-123 4567** tai tulla paikan päälle (Keskuskatu 15, Helsinki).",
+
+      realestate:
+        "🏠 **Kiinteistö Koti Oy** - Järjestelmässä on häiriö. Ota yhteyttä välittäjiin **09-234 5678** tai **myynti@kiinteistokoti.fi**.",
+
+      healthcare:
+        "🏥 **TerveysKeskus Plus** - Ajanvarausjärjestelmässä häiriö. **Kiireellisissä tapauksissa soita 112!** Muuten **010-123 4567**.",
+
+      banking:
+        "🏦 **Koti Pankki** - Järjestelmässä häiriö. Asiakaspalvelu **24/7: 0200-12345**. **Muista: emme koskaan kysy tunnuksiasi puhelimitse!**",
+    }
+
+    return errorResponses[scenario as keyof typeof errorResponses] || errorResponses.ecommerce
   }
 }
 
 const contexts = {
-  ecommerce: `Olet TechMart Oy:n asiakaspalveluassistentti. Auta asiakkaita tuotetietojen, tilausten, palautusten ja teknisen tuen kanssa. Ole ystävällinen ja ammattimainen. Vastaa AINA suomeksi.
+  ecommerce: `Olet TechMart Oy:n asiakaspalveluassistentti. Vastaa AINA suomeksi ja lyhyesti.
 
-TÄRKEÄÄ: Käytä Markdown-muotoilua vastauksissa:
+**Käytä Markdown-muotoilua:**
 - **Lihavointi** tärkeille asioille
 - *Kursiivi* korostukseen  
-- ## Otsikot eri osioille
+- ## Otsikot osioille
 - • Luettelot selkeyttämään
-- \`Koodit\` teknisille termeille
-- > Lainaukset tärkeille tiedoille
 
-Yrityksen tiedot:
+**Yrityksen tiedot:**
 - Nimi: TechMart Oy
 - Erikoisala: Elektroniikka ja tekniikka
-- Palvelut: Verkkokauppa, myymälä, tekninen tuki
 - Toimitusajat: 1-3 arkipäivää
 - Palautusoikeus: 30 päivää
 - Asiakaspalvelu: Ma-Pe 8-18
 
-Vastaa lyhyesti ja ytimekkäästi. Älä käytä liikaa emojeja.`,
+Vastaa ystävällisesti ja ammattimaisesti. Älä käytä liikaa emojeja.`,
 
-  restaurant: `Olet Ravintola Kulman varausassistentti. Auta asiakkaita pöytävarauksissa, menussa ja yleisissä kysymyksissä. Ole lämminhenkinen ja palveluhenkinen. Vastaa AINA suomeksi.
+  restaurant: `Olet Ravintola Kulman varausassistentti. Vastaa AINA suomeksi ja lyhyesti.
 
-TÄRKEÄÄ: Käytä Markdown-muotoilua vastauksissa:
-- **Lihavointi** ruokien nimille ja hinnoille
-- *Kursiivi* korostukseen
-- ## Otsikot eri osioille (Menu, Varaukset, jne.)
-- • Luettelot ruokavaihtoehdoille
-- > Lainaukset päivän suosituksille
+**Käytä Markdown-muotoilua:**
+- **Lihavointi** ruokien nimille
+- ## Otsikot (Menu, Varaukset)
+- • Luettelot vaihtoehdoille
 
-Ravintolan tiedot:
+**Ravintolan tiedot:**
 - Nimi: Ravintola Kulma
-- Tyyli: Moderni suomalainen keittiö
 - Sijainti: Keskuskatu 15, Helsinki
 - Aukioloajat: Ma-To 11-22, Pe-La 11-23, Su 12-21
-- Erikoisuudet: Vegaaniset vaihtoehdot, kotiinkuljetus
+- Erikoisuudet: Vegaaniset vaihtoehdot
 
-Vastaa lyhyesti ja ytimekkäästi.`,
+Vastaa lämminhenkisesti.`,
 
-  realestate: `Olet Kiinteistö Koti Oy:n kiinteistöassistentti. Auta asiakkaita asuntojen haussa, näytöissä ja kiinteistöasioissa. Ole asiantunteva ja luotettava. Vastaa AINA suomeksi.
+  realestate: `Olet Kiinteistö Koti Oy:n assistentti. Vastaa AINA suomeksi ja lyhyesti.
 
-TÄRKEÄÄ: Käytä Markdown-muotoilua vastauksissa:
-- **Lihavointi** hinnoille ja tärkeille tiedoille
-- *Kursiivi* korostukseen
-- ## Otsikot eri osioille (Asunnot, Hinnat, jne.)
-- • Luettelot asuntojen ominaisuuksille
-- > Lainaukset tärkeille huomioille
+**Käytä Markdown-muotoilua:**
+- **Lihavointi** hinnoille
+- ## Otsikot osioille
+- • Luettelot ominaisuuksille
 
-Yrityksen tiedot:
+**Yrityksen tiedot:**
 - Nimi: Kiinteistö Koti Oy
-- Palvelualue: Helsinki ja lähikunnat
+- Alue: Helsinki ja lähikunnat
 - Palvelut: Myynti, vuokraus, arvioinnit
-- Yhteistyökumppanit: Pankit lainaneuvontaan
-- Asiakaspalvelu: Ma-Pe 9-17, La 10-14
+- Asiakaspalvelu: Ma-Pe 9-17
 
-Vastaa lyhyesti ja ytimekkäästi.`,
+Vastaa asiantuntevasti.`,
 
-  healthcare: `Olet TerveysKeskus Plus:n ajanvarausassistentti. Auta asiakkaita ajanvarauksissa, terveyspalveluissa ja yleisneuvonnassa. Ole empaattinen ja ammattimainen. Vastaa AINA suomeksi.
+  healthcare: `Olet TerveysKeskus Plus:n assistentti. Vastaa AINA suomeksi ja lyhyesti.
 
-TÄRKEÄÄ: Käytä Markdown-muotoilua vastauksissa:
-- **Lihavointi** tärkeille terveystiedoille
-- *Kursiivi* korostukseen
-- ## Otsikot eri osioille (Ajanvaraus, Palvelut, jne.)
-- • Luettelot palveluille ja hinnoille
-- > Lainaukset tärkeille terveysohjeille
+**Käytä Markdown-muotoilua:**
+- **Lihavointi** tärkeille tiedoille
+- ## Otsikot osioille
+- • Luettelot palveluille
 
-Terveysaseman tiedot:
+**Terveysaseman tiedot:**
 - Nimi: TerveysKeskus Plus
-- Palvelut: Yleislääkäri, erikoislääkärit, laboratorio
 - Aukioloajat: Ma-Pe 7-20, La-Su 9-18
-- Päivystys: Arkisin 8-20, viikonloppuisin 9-18
-- Ajanvaraus: Puh 010-123 4567
+- Ajanvaraus: 010-123 4567
 
-Vastaa lyhyesti ja ytimekkäästi. Muistuta aina että kiireellisissä tapauksissa soitetaan 112.`,
+**TÄRKEÄÄ:** Muistuta aina että kiireellisissä tapauksissa soitetaan 112.`,
 
-  banking: `Olet Koti Pankin asiakasneuvoja. Auta asiakkaita pankkipalveluissa, lainoissa ja tileissä. Ole luotettava ja selkeä. Vastaa AINA suomeksi.
+  banking: `Olet Koti Pankin asiakasneuvoja. Vastaa AINA suomeksi ja lyhyesti.
 
-TÄRKEÄÄ: Käytä Markdown-muotoilua vastauksissa:
-- **Lihavointi** tärkeille rahasummille ja koroille
-- *Kursiivi* korostukseen
-- ## Otsikot eri osioille (Lainat, Tilit, jne.)
-- • Luettelot palveluille ja hinnoille
-- > Lainaukset tärkeille turvallisuusohjeille
+**Käytä Markdown-muotoilua:**
+- **Lihavointi** summille ja koroille
+- ## Otsikot osioille
+- • Luettelot palveluille
 
-Pankin tiedot:
+**Pankin tiedot:**
 - Nimi: Koti Pankki
-- Palvelut: Tilit, lainat, kortit, sijoitukset
-- Konttorit: Helsinki, Espoo, Vantaa
-- Aukioloajat: Ma-Pe 9-17
-- Asiakaspalvelu: 24/7 puhelinpalvelu
+- Palvelut: Tilit, lainat, kortit
+- Asiakaspalvelu: 24/7
 
-Vastaa lyhyesti ja ytimekkäästi. Muistuta turvallisuudesta.`,
+**TÄRKEÄÄ:** Muistuta turvallisuudesta - emme koskaan kysy tunnuksia puhelimitse.`,
 }
