@@ -1,6 +1,8 @@
 "use client"
 
-import type React from "react"
+import React from "react"
+
+import type { ReactNode } from "react"
 
 interface MarkdownRendererProps {
   content: string
@@ -8,10 +10,9 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
-  // Yksinkertainen Markdown-parseri
-  const parseMarkdown = (text: string): React.ReactNode => {
+  const parseMarkdown = (text: string): ReactNode => {
     const lines = text.split("\n")
-    const elements: React.ReactNode[] = []
+    const elements: ReactNode[] = []
     let currentList: string[] = []
     let inBlockquote = false
     let blockquoteLines: string[] = []
@@ -40,7 +41,10 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
           >
             <div className="text-blue-200 italic">
               {blockquoteLines.map((line, index) => (
-                <div key={index}>{parseInlineMarkdown(line)}</div>
+                <React.Fragment key={index}>
+                  {parseInlineMarkdown(line)}
+                  {index < blockquoteLines.length - 1 && <br />}
+                </React.Fragment>
               ))}
             </div>
           </blockquote>,
@@ -53,13 +57,21 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
     lines.forEach((line, index) => {
       const trimmedLine = line.trim()
 
+      // Tyhjä rivi
+      if (!trimmedLine) {
+        flushList()
+        flushBlockquote()
+        elements.push(<div key={`space-${index}`} className="h-2" />)
+        return
+      }
+
       // Blockquote
       if (trimmedLine.startsWith("> ")) {
         flushList()
         inBlockquote = true
         blockquoteLines.push(trimmedLine.substring(2))
         return
-      } else if (inBlockquote) {
+      } else if (inBlockquote && !trimmedLine.startsWith(">")) {
         flushBlockquote()
       }
 
@@ -94,22 +106,13 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
       }
 
       // Regular paragraphs
-      if (trimmedLine) {
-        flushList()
-        flushBlockquote()
-        elements.push(
-          <p key={`p-${index}`} className="text-gray-100 leading-relaxed my-2">
-            {parseInlineMarkdown(trimmedLine)}
-          </p>,
-        )
-      } else {
-        flushList()
-        flushBlockquote()
-        // Empty line - add some spacing
-        if (elements.length > 0) {
-          elements.push(<div key={`space-${index}`} className="h-2" />)
-        }
-      }
+      flushList()
+      flushBlockquote()
+      elements.push(
+        <p key={`p-${index}`} className="text-gray-100 leading-relaxed my-2">
+          {parseInlineMarkdown(trimmedLine)}
+        </p>,
+      )
     })
 
     // Flush any remaining content
@@ -119,61 +122,58 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
     return elements
   }
 
-  const parseInlineMarkdown = (text: string): React.ReactNode => {
-    const parts: React.ReactNode[] = []
-    let currentText = text
+  const parseInlineMarkdown = (text: string): ReactNode => {
+    if (!text) return ""
+
+    const parts: ReactNode[] = []
+    let remaining = text
     let keyCounter = 0
 
-    // Bold **text**
-    currentText = currentText.replace(/\*\*(.*?)\*\*/g, (match, content) => {
-      const placeholder = `__BOLD_${keyCounter}__`
-      parts.push(
-        <strong key={`bold-${keyCounter}`} className="font-bold text-white">
-          {content}
-        </strong>,
-      )
-      keyCounter++
-      return placeholder
-    })
+    const processMatch = (regex: RegExp, component: (content: string, key: string) => ReactNode) => {
+      let match
+      while ((match = regex.exec(remaining)) !== null) {
+        const content = match[1]
+        const key = `__${match[0].replace(/[^A-Z0-9]/g, "_")}_${keyCounter}__`
+        parts.push(component(content, key))
+        remaining = remaining.replace(match[0], key)
+        keyCounter++
+      }
+    }
 
-    // Italic *text*
-    currentText = currentText.replace(/\*(.*?)\*/g, (match, content) => {
-      const placeholder = `__ITALIC_${keyCounter}__`
-      parts.push(
-        <em key={`italic-${keyCounter}`} className="italic text-blue-200">
-          {content}
-        </em>,
-      )
-      keyCounter++
-      return placeholder
-    })
+    // Process bold **text**
+    processMatch(/\*\*(.*?)\*\*/g, (content, key) => (
+      <strong key={key} className="font-bold text-white">
+        {content}
+      </strong>
+    ))
 
-    // Code `text`
-    currentText = currentText.replace(/`(.*?)`/g, (match, content) => {
-      const placeholder = `__CODE_${keyCounter}__`
-      parts.push(
-        <code key={`code-${keyCounter}`} className="bg-gray-800 text-green-300 px-2 py-1 rounded text-sm font-mono">
-          {content}
-        </code>,
-      )
-      keyCounter++
-      return placeholder
-    })
+    // Process italic *text*
+    processMatch(/(?<!\*)\*([^*]+)\*(?!\*)/g, (content, key) => (
+      <em key={key} className="italic text-blue-200">
+        {content}
+      </em>
+    ))
 
-    // Split by placeholders and reconstruct
-    const segments = currentText.split(/(__[A-Z]+_\d+__)/g)
-    const result: React.ReactNode[] = []
+    // Process code `text`
+    processMatch(/`([^`]+)`/g, (content, key) => (
+      <code key={key} className="bg-gray-800 text-green-300 px-2 py-1 rounded text-sm font-mono">
+        {content}
+      </code>
+    ))
+
+    // Split and reconstruct
+    const segments = remaining.split(/(__[^_]+(?:_[^_]+)+__)/g)
+    const result: ReactNode[] = []
 
     segments.forEach((segment, index) => {
-      if (segment.startsWith("__") && segment.endsWith("__")) {
-        // Find the corresponding component
-        const matchingPart = parts.find(
-          (_, partIndex) => segment === `__${segment.split("_")[1]}_${segment.split("_")[2]}__`,
-        )
+      if (segment.match(/^(__[^_]+(?:_[^_]+)+__)$/)) {
+        const matchingPart = parts.find((part: any) => part.key === segment)
         if (matchingPart) {
           result.push(matchingPart)
+        } else {
+          result.push(segment) // If not found, keep the original segment
         }
-      } else if (segment) {
+      } else {
         result.push(segment)
       }
     })
