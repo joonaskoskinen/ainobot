@@ -11,7 +11,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Aino AI - Suomen Paras Chatbot | 24/7 Asiakaspalvelu Automaatio",
+  title: "AinoBot - 24/7 Asiakaspalvelu Automaatio",
   description:
     "🤖 Aino AI - Suomalainen chatbot-ratkaisu yrityksille. Säästä 75% asiakaspalvelukustannuksista, paranna asiakaskokemusta ja kasvata myyntiä. ✅ GDPR-yhteensopiva ✅ Ilmainen demo ✅ 24/7 tuki",
   keywords: [
